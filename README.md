@@ -337,5 +337,3 @@ To modify or extend this project:
 - Test case verified and working
 
 ---
-
-**Ready for evaluation!**

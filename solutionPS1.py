@@ -1,4 +1,12 @@
 import sys
+import logging
+
+LOG_ENABLED = False
+
+logging.basicConfig(
+    level=logging.INFO if LOG_ENABLED else logging.CRITICAL
+)
+logger = logging.getLogger(__name__)
 
 """
 Two-Player Sudoku Solver using Minimax Algorithm
@@ -27,10 +35,10 @@ def read_input(filename):
     Reads and parses the input file containing player info and Sudoku board.
     
     Input file format:
-    - First line: Current player (P1 or P2)
-    - Next 9 lines: Sudoku board with space-separated values
+    - Lines 1-9: Sudoku board with space-separated values
       - '.' represents empty cells
       - '1'-'9' represent filled cells
+    - Last line: Current player (P1 or P2)
     
     Returns:
         tuple: (player_name, board_2d_list)
@@ -41,38 +49,33 @@ def read_input(filename):
         with open(filename, 'r') as f:
             lines = [line.strip() for line in f if line.strip()]
     except FileNotFoundError:
-        # print(f"[ERROR] Input file '{filename}' not found.")
-        # print(f"[ACTION] Please ensure input file exists at: {filename}")
+        logger.error(f"Input file '{filename}' not found.")
         sys.exit(1)
     except IOError as e:
-        # print(f"[ERROR] Unable to read input file '{filename}': {e}")
+        logger.error(f"Unable to read input file '{filename}': {e}")
         sys.exit(1)
 
     if not lines:
-        # print("[ERROR] Input file is EMPTY - no data to process.")
-        # print("[ACTION] Input file must contain: player line (P1/P2) + 9 board rows")
+        logger.error("Input file is EMPTY - no data to process.")
         sys.exit(1)
 
-    # Parse the player from the first line
-    player = lines[0]
-    if player not in ('P1', 'P2'):
-        # print(f"[ERROR] Invalid player '{player}' in input file.")
-        # print(f"[ACTION] Player must be either 'P1' or 'P2'.")
-        sys.exit(1)
-
-    # Validate that we have exactly 10 lines (1 player + 9 board rows)
+    # Validate that we have exactly 10 lines (9 board rows + 1 player)
     if len(lines) < 10:
-        # print(f"[ERROR] Incomplete board data - expected 10 lines (1 player + 9 rows), got {len(lines)}.")
-        # print(f"[ACTION] Please provide complete 9x9 Sudoku board.")
+        logger.error(f"Incomplete board data - expected 10 lines (9 rows + 1 player), got {len(lines)}.")
         sys.exit(1)
 
-    # Parse the 9x9 Sudoku board
+    # Parse the player from the last line (assignment format: board rows first, then player)
+    player = lines[-1]
+    if player not in ('P1', 'P2'):
+        logger.error(f"Invalid player '{player}' in input file. Must be 'P1' or 'P2'.")
+        sys.exit(1)
+
+    # Parse the 9x9 Sudoku board from the first 9 lines
     board = []
-    for i in range(1, 10):
+    for i in range(0, 9):
         tokens = lines[i].split()
         if len(tokens) != 9:
-            # print(f"[ERROR] Row {i} has invalid dimensions - expected 9 values, got {len(tokens)}.")
-            # print(f"[ACTION] Each row must contain exactly 9 space-separated values.")
+            logger.error(f"Row {i + 1} has invalid dimensions - expected 9 values, got {len(tokens)}.")
             sys.exit(1)
         row = []
         for j, t in enumerate(tokens):
@@ -81,8 +84,7 @@ def read_input(filename):
             elif t.isdigit() and 1 <= int(t) <= 9:
                 row.append(int(t))
             else:
-                # print(f"[ERROR] Invalid cell value '{t}' at row {i}, column {j+1}.")
-                # print(f"[ACTION] Cell values must be '.' (empty) or '1'-'9' (filled).")
+                logger.error(f"Invalid cell value '{t}' at row {i + 1}, column {j + 1}.")
                 sys.exit(1)
         board.append(row)
 
@@ -111,11 +113,11 @@ def get_valid_values(board, r, c):
     """
     # Validate cell position
     if not (0 <= r < 9 and 0 <= c < 9):
-        # print(f"[ERROR] Invalid cell position ({r}, {c}) - must be within 0-8 range.")
+        logger.error(f"Invalid cell position ({r}, {c}) - must be within 0-8 range.")
         sys.exit(1)
     
     if board[r][c] != 0:
-        # print(f"[ERROR] Cell at position ({r}, {c}) is already filled with value {board[r][c]}.")
+        logger.error(f"Cell at position ({r}, {c}) is already filled with value {board[r][c]}.")
         sys.exit(1)
     
     used = set()
@@ -185,7 +187,7 @@ def board_to_tuple(board):
         ValueError: If board is not a valid 9x9 structure
     """
     if len(board) != 9 or any(len(row) != 9 for row in board):
-        # print(f"[ERROR] Invalid board structure - board must be 9x9, got {len(board)}x{len(board[0]) if board else 0}.")
+        logger.error(f"Invalid board structure - board must be 9x9, got {len(board)}x{len(board[0]) if board else 0}.")
         sys.exit(1)
     
     return tuple(tuple(row) for row in board)
@@ -269,15 +271,14 @@ def find_best_move(board, player):
     """
     # Validate player
     if player not in ('P1', 'P2'):
-        # print(f"[ERROR] Invalid player '{player}' - must be 'P1' or 'P2'.")
+        logger.error(f"Invalid player '{player}' - must be 'P1' or 'P2'.")
         sys.exit(1)
     
     empty_count = count_empty_cells(board)
     
     # Check if board is already FULL
     if empty_count == 0:
-        # print("[FULL] Board capacity FULL - all 81 cells are filled.")
-        # print("[ACTION] No moves available. Game is complete.")
+        logger.warning("Board capacity FULL - all 81 cells are filled. No moves available.")
         sys.exit(1)
 
     memo = {}  # Dictionary to store evaluated board states
@@ -312,9 +313,7 @@ def find_best_move(board, player):
                         best_r, best_c, best_v = r, c, v
 
     if not found_any:
-        # print(f"[EMPTY] No valid moves available for {player}.")
-        # print(f"[ACTION] {empty_count} empty cells exist, but no valid Sudoku values can be placed.")
-        # print(f"[ACTION] This may indicate an invalid or unsolvable board state.")
+        logger.warning(f"No valid moves available for {player}. {empty_count} empty cells exist but no valid Sudoku values can be placed.")
         sys.exit(1)
 
     # Apply the best move to the board
@@ -370,15 +369,15 @@ def write_output(filename, r, c, v, p1_score, p2_score, board):
     """
     # Validate output parameters
     if not (0 <= r < 9 and 0 <= c < 9):
-        # print(f"[ERROR] Invalid move position ({r}, {c}) - must be within 0-8 range.")
+        logger.error(f"Invalid move position ({r}, {c}) - must be within 0-8 range.")
         sys.exit(1)
     
     if not (1 <= v <= 9):
-        # print(f"[ERROR] Invalid move value {v} - must be between 1-9.")
+        logger.error(f"Invalid move value {v} - must be between 1-9.")
         sys.exit(1)
     
     if p1_score < 0 or p2_score < 0:
-        # print(f"[ERROR] Invalid scores - P1: {p1_score}, P2: {p2_score}. Scores cannot be negative.")
+        logger.error(f"Invalid scores - P1: {p1_score}, P2: {p2_score}. Scores cannot be negative.")
         sys.exit(1)
     
     content = (
@@ -386,10 +385,11 @@ def write_output(filename, r, c, v, p1_score, p2_score, board):
         f"Row = {r + 1}\n"  # Convert to 1-indexed for output
         f"Column = {c + 1}\n"  # Convert to 1-indexed for output
         f"Number = {v}\n"
+        f"\n"
         f"Player 1 Score = {p1_score}\n"
         f"Player 2 Score = {p2_score}\n"
         f"\n"
-        f"Updated Sudoku Board\n"
+        f"Updated Sudoku Board:\n"
         f"{board_to_string(board)}"
     )
     
@@ -397,21 +397,16 @@ def write_output(filename, r, c, v, p1_score, p2_score, board):
     try:
         with open(filename, 'w') as f:
             f.write(content)
-        # print(f"[SUCCESS] Output written to '{filename}'")
+        logger.info(f"Output written to '{filename}'")
     except FileNotFoundError:
-        # print(f"[ERROR] Output file path '{filename}' is invalid or directory does not exist.")
-        # print(f"[ACTION] Ensure the directory exists before writing.")
+        logger.error(f"Output file path '{filename}' is invalid or directory does not exist.")
         sys.exit(1)
     except PermissionError:
-        # print(f"[ERROR] Permission denied - cannot write to '{filename}'.")
-        # print(f"[ACTION] Check file permissions and try again.")
+        logger.error(f"Permission denied - cannot write to '{filename}'.")
         sys.exit(1)
     except IOError as e:
-        # print(f"[ERROR] Failed to write output file '{filename}': {e}")
+        logger.error(f"Failed to write output file '{filename}': {e}")
         sys.exit(1)
-    
-    # Also print to console for immediate feedback
-    # print("\n" + content)
 
 
 def main():
@@ -433,9 +428,8 @@ def main():
     try:
         # Parse command line arguments
         if len(sys.argv) < 3:
-            print("[ERROR] Insufficient arguments provided.")
-            print("[USAGE] python solutionPS1.py <input_file> <output_file>")
-            print("[EXAMPLE] python solutionPS1.py inputPS1.txt outputPS1.txt")
+            logger.error("Insufficient arguments provided.")
+            logger.error("Usage: python solutionPS1.py <input_file> <output_file>")
             sys.exit(1)
         
         input_file = sys.argv[1]
@@ -443,21 +437,21 @@ def main():
         
         # Step 1: Read input
         player, board = read_input(input_file)
-        # print(f"[SUCCESS] Input loaded - Player: {player}, Empty cells: {count_empty_cells(board)}")
+        logger.info(f"Input loaded - Player: {player}, Empty cells: {count_empty_cells(board)}")
         
         # Step 2: Find best move
         r, c, v, p1_score, p2_score = find_best_move(board, player)
-        # print(f"[SUCCESS] Optimal move calculated for {player}")
+        logger.info(f"Optimal move calculated for {player}")
         
         # Step 3: Write output
         write_output(output_file, r, c, v, p1_score, p2_score, board)
-        # print(f"[SUCCESS] Sudoku Solver completed successfully.")
+        logger.info("Sudoku Solver completed successfully.")
         
     except KeyboardInterrupt:
-        # print("\n[ERROR] Program interrupted by user.")
+        logger.error("Program interrupted by user.")
         sys.exit(1)
     except Exception as e:
-        # print(f"[ERROR] Unexpected error occurred: {e}")
+        logger.error(f"Unexpected error occurred: {e}")
         sys.exit(1)
 
 
